@@ -27,7 +27,7 @@ class PTEmceeSampler(ParallelTemperedMCMCSampler):
         nwalkers: int,
         nsteps: int = 100,
         ntemps: int = 5,
-        burnin: int = 0,
+        burn_in: int = 0,
         thin: int = 1,
         Tmax: float | None = math.inf,
         rng=None,
@@ -58,7 +58,6 @@ class PTEmceeSampler(ParallelTemperedMCMCSampler):
             self.sampler.sample(
                 p0=z0,
                 iterations=nsteps,
-                thin=thin,
             ),
             total=nsteps,
             desc="Sampling with ptemcee",
@@ -86,12 +85,15 @@ class PTEmceeSampler(ParallelTemperedMCMCSampler):
             xp=self.xp,
             dtype=self.dtype,
             thin=thin,
-            burn_in=burnin,
+            burn_in=burn_in,
         )
 
         samples_pt.log_prior = samples_pt.array_to_namespace(
             self.log_prior(samples_pt)
         )
         samples_pt.autocorrelation_time = self.sampler.acor
+
+        if thin is not None and burn_in is not None:
+            samples_pt = samples_pt.post_process(burn_in=burn_in, thin=thin)
 
         return samples_pt
