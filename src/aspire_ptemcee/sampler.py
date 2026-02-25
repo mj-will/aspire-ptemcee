@@ -1,3 +1,4 @@
+import logging
 import math
 
 import numpy as np
@@ -7,9 +8,19 @@ from aspire.samples import PTMCMCSamples
 from aspire.utils import to_numpy, track_calls
 
 from ._vendor import ptemcee
+from .proposal import FlowProposal
+
+logger = logging.getLogger(__name__)
 
 
 class PTEmceeSampler(ParallelTemperedMCMCSampler):
+    """Parallel Tempered MCMC sampler using ptemcee.
+
+    This uses the vendored of ptemcee, which include changes to support:
+    - Vectorized log-likelihood and log-prior evaluations
+    - Custom flow-based proposals
+    """
+
     def log_likelihood_wrapper(self, z):
         if np.ndim(z) > 2:
             raise ValueError("Input z must be a 1D or 2D array.")
@@ -23,8 +34,8 @@ class PTEmceeSampler(ParallelTemperedMCMCSampler):
     @track_calls
     def sample(
         self,
-        n_samples: int,
-        nwalkers: int,
+        n_samples: int | None = None,
+        nwalkers: int | None = None,
         nsteps: int = 100,
         ntemps: int = 5,
         burn_in: int = 0,
@@ -32,9 +43,63 @@ class PTEmceeSampler(ParallelTemperedMCMCSampler):
         Tmax: float | None = math.inf,
         rng=None,
         vectorize: bool = True,
+        proposal: str | None = None,
         **kwargs,
     ):
+        """Run parallel tempered MCMC sampling using ptemcee.
+
+        Parameters
+        ----------
+        n_samples : int
+            The number of samples to draw from the posterior
+            (after burn-in and thinning). If None, returns all samples.
+        nwalkers : int
+            The number of walkers to use in the MCMC sampler. If None, defaults
+            to the number of samples.
+        nsteps : int
+            The number of MCMC steps to run.
+        ntemps : int
+            The number of temperatures to use in the parallel tempering.
+        burn_in : int
+            The number of initial samples to discard as burn-in.
+        thin : int
+            The thinning factor to apply to the samples after burn-in.
+        Tmax : float
+            The maximum temperature to use in the parallel tempering. If None,
+            defaults to infinity (no maximum temperature).
+        rng : np.random.Generator
+            A random number generator to use for sampling. If None, a new
+            generator will be created.
+        vectorize : bool
+            Whether to use vectorized log-likelihood and log-prior evaluations.
+        proposal : str or None
+            The proposal distribution to use for MCMC sampling. If 'flow', uses
+            a flow-based proposal. If None, uses the default proposal in ptemcee.
+            Currently, only 'flow' is supported as a custom proposal option.
+        kwargs
+            Additional keyword arguments to pass to the ptemcee.Sampler
+            constructor.
+        """
         rng = rng or self.rng or np.random.default_rng()
+
+        if proposal == "flow":
+            logger.info(
+                "Using flow-based proposal for PTMCMC sampling with ptemcee."
+            )
+            proposal = FlowProposal(
+                prior_flow=self.prior_flow,
+                preconditioning_transform=self.preconditioning_transform,
+            )
+        elif proposal is not None:
+            raise ValueError(
+                f"Invalid proposal: {proposal}. Must be 'flow' or None."
+            )
+        else:
+            logger.debug(
+                "Using default proposal for PTMCMC sampling with ptemcee."
+            )
+
+        nwalkers = nwalkers or n_samples
 
         self.sampler = ptemcee.Sampler(
             dim=self.dims,
@@ -43,6 +108,7 @@ class PTEmceeSampler(ParallelTemperedMCMCSampler):
             nwalkers=nwalkers,
             ntemps=ntemps,
             Tmax=Tmax,
+            proposal=proposal,
             random=rng,
             vectorize=vectorize,
             **kwargs,
@@ -84,8 +150,6 @@ class PTEmceeSampler(ParallelTemperedMCMCSampler):
             parameters=self.parameters,
             xp=self.xp,
             dtype=self.dtype,
-            thin=thin,
-            burn_in=burn_in,
         )
 
         samples_pt.log_prior = samples_pt.array_to_namespace(
@@ -94,6 +158,15 @@ class PTEmceeSampler(ParallelTemperedMCMCSampler):
         samples_pt.autocorrelation_time = self.sampler.acor
 
         if thin is not None and burn_in is not None:
+            logger.info(
+                f"Post-processing PTMCMC samples with burn-in of {burn_in} and thinning factor of {thin}."
+            )
             samples_pt = samples_pt.post_process(burn_in=burn_in, thin=thin)
+
+        if n_samples is not None:
+            logger.info(
+                f"Subsampling PTMCMC samples to {n_samples} samples per temperature after burn-in and thinning."
+            )
+            samples_pt = samples_pt[:n_samples]
 
         return samples_pt
