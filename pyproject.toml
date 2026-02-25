@@ -33,6 +33,8 @@ test = [
 line-length = 79
 indent-width = 4
 target-version = "py39"
+# Ignore the _vendor submodule
+exclude = ["src/aspire_ptemcee/_vendor/*"]
 
 [tool.ruff.lint]
 # Allow fix for all enabled rules (when `--fix`) is provided.
