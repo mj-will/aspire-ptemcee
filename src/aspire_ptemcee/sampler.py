@@ -44,6 +44,9 @@ class PTEmceeSampler(ParallelTemperedMCMCSampler):
         rng=None,
         vectorize: bool = True,
         proposal: str | None = None,
+        checkpoint_callback=None,
+        checkpoint_every: int | None = None,
+        checkpoint_file_path: str | None = None,
         **kwargs,
     ):
         """Run parallel tempered MCMC sampling using ptemcee.
@@ -76,6 +79,14 @@ class PTEmceeSampler(ParallelTemperedMCMCSampler):
             The proposal distribution to use for MCMC sampling. If 'flow', uses
             a flow-based proposal. If None, uses the default proposal in ptemcee.
             Currently, only 'flow' is supported as a custom proposal option.
+        checkpoint_callback : callable, optional
+            Callback used to save checkpoints. If None, no callback checkpointing
+            is applied unless checkpoint_file_path is provided.
+        checkpoint_every : int, optional
+            Checkpoint frequency control. For PTMCMC this currently only gates
+            final checkpoint saving; if <= 0, no checkpoint is written.
+        checkpoint_file_path : str, optional
+            HDF5 file path where the final checkpoint is written.
         kwargs
             Additional keyword arguments to pass to the ptemcee.Sampler
             constructor.
@@ -156,6 +167,15 @@ class PTEmceeSampler(ParallelTemperedMCMCSampler):
             self.log_prior(samples_pt)
         )
         samples_pt.autocorrelation_time = self.sampler.acor
+
+        # Save checkpoint before any post-processing (burn-in/thinning/subsampling).
+        self.checkpoint_mcmc_chain(
+            samples=samples_pt,
+            iteration=nsteps,
+            checkpoint_callback=checkpoint_callback,
+            checkpoint_every=checkpoint_every,
+            checkpoint_file_path=checkpoint_file_path,
+        )
 
         if thin is not None and burn_in is not None:
             logger.info(
