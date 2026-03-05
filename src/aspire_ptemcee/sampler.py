@@ -54,8 +54,8 @@ class PTEmceeSampler(ParallelTemperedMCMCSampler):
         Parameters
         ----------
         n_samples : int
-            The number of samples to draw from the posterior
-            (after burn-in and thinning). If None, returns all samples.
+            The number of samples to return per temperature after burn-in and
+            thinning.
         nwalkers : int
             The number of walkers to use in the MCMC sampler. If None, defaults
             to the number of samples.
@@ -187,6 +187,6 @@ class PTEmceeSampler(ParallelTemperedMCMCSampler):
             logger.info(
                 f"Subsampling PTMCMC samples to {n_samples} samples per temperature after burn-in and thinning."
             )
-            samples_pt = samples_pt[:n_samples]
+            samples_pt = samples_pt.subsample(n_samples, rng=rng)
 
         return samples_pt
