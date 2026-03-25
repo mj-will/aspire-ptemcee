@@ -9,7 +9,7 @@ authors = [
 ]
 description = "PTEmcee sampler for aspire"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 license = {text = "MIT"}
 classifiers = [
     "Programming Language :: Python :: 3",
